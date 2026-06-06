@@ -13,7 +13,14 @@
 <body>
     <h1>Supabase Keep-Alive Status</h1>
     <p>Last Ping Log:</p>
-    <!-- This loads your heartbeat text file right on the page -->
-    <iframe src="heartbeat.txt"></iframe>
+    
+    <iframe id="heartbeat-frame" src="about:blank"></iframe>
+
+    <script>
+        // Forces the iframe to load the text file without using cached data
+        const iframe = document.getElementById('heartbeat-frame');
+        const cacheBuster = new Date().getTime();
+        iframe.src = `heartbeat.txt?v=${cacheBuster}`;
+    </script>
 </body>
 </html>
