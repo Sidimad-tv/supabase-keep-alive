@@ -1,0 +1,39 @@
+name: 3-Hour Supabase Heartbeat
+
+on:
+  schedule:
+    - cron: '0 */3 * * *' # Runs exactly every 3 hours
+  workflow_dispatch: # Allows you to click "Run workflow" to test it manually
+
+jobs:
+  ping_and_log:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Ping Supabase & Write Log
+        run: |
+          # Get current date and time
+          CURRENT_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          # Send request to Supabase and get the HTTP status code
+          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/users?limit=1" \
+            -H "apikey: ${{ secrets.SUPABASE_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_KEY }}")
+
+          # Determine success or failure message
+          if [ "$STATUS_CODE" -eq 200 ]; then
+            echo "Last Ping: $CURRENT_TIME | Status: Success (200 OK) - Database is Awake!" > heartbeat.txt
+          else
+            echo "Last Ping: $CURRENT_TIME | Status: Failed ($STATUS_CODE)" > heartbeat.txt
+          fi
+
+      - name: Commit and Push heartbeat.txt
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add heartbeat.txt
+          # Only commit if the file actually changed to avoid errors
+          git diff-index --quiet HEAD || git commit -m "Update heartbeat status [skip ci]"
+          git push
