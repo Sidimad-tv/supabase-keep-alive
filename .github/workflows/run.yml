@@ -12,22 +12,40 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Ping Supabase & Write Log
+      - name: Ping Supabase Projects & Write Log
+        env:
+          URL_1: ${{ secrets.SUPABASE_URL }}
+          KEY_1: ${{ secrets.SUPABASE_KEY }}
+          URL_2: ${{ secrets.SUPABASE_URL_1 }}
+          KEY_2: ${{ secrets.SUPABASE_KEY_1 }}
         run: |
           # Get current date and time
           CURRENT_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
           
-          # Send request to Supabase and get the HTTP status code
-          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/users?limit=1" \
-            -H "apikey: ${{ secrets.SUPABASE_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_KEY }}")
+          # Clear or start the heartbeat log file
+          echo "=== Supabase Heartbeat Log ($CURRENT_TIME) ===" > heartbeat.txt
 
-          # Determine success or failure message
-          if [ "$STATUS_CODE" -eq 200 ]; then
-            echo "Last Ping: $CURRENT_TIME | Status: Success (200 OK) - Database is Awake!" > heartbeat.txt
-          else
-            echo "Last Ping: $CURRENT_TIME | Status: Failed ($STATUS_CODE)" > heartbeat.txt
-          fi
+          # Loop through your configured projects
+          for i in 1 2; do
+            eval SUPABASE_URL=\$URL_$i
+            eval SUPABASE_KEY=\$KEY_$i
+
+            if [ -n "$SUPABASE_URL" ]; then
+              echo "----------------------------------------"
+              
+              # Send request to Supabase and get the HTTP status code
+              STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$SUPABASE_URL/rest/v1/users?limit=1" \
+                -H "apikey: $SUPABASE_KEY" \
+                -H "Authorization: Bearer $SUPABASE_KEY")
+
+              # Determine success or failure message and append to file
+              if [ "$STATUS_CODE" -eq 200 ]; then
+                echo "Project $i Status: Success (200 OK) - Database is Awake!" >> heartbeat.txt
+              else
+                echo "Project $i Status: Failed ($STATUS_CODE)" >> heartbeat.txt
+              fi
+            fi
+          done
 
       - name: Commit and Push heartbeat.txt
         run: |
@@ -35,5 +53,5 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add heartbeat.txt
           # Only commit if the file actually changed to avoid errors
-          git diff-index --quiet HEAD || git commit -m "Update heartbeat status [skip ci]"
+          git diff-index --quiet HEAD || git commit -m "Update heartbeat status for multiple projects [skip ci]"
           git push
