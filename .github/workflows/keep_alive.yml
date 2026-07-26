@@ -1,33 +1,71 @@
-name: Keep Supabase Alive
+name: 3-Hour Supabase Heartbeat
 
 on:
-  # Runs automatically at midnight every Sunday and Wednesday
-  - cron: '0 0 * * 0,3'
-  workflow_dispatch: # Allows you to manually trigger it for testing
+  schedule:
+    - cron: '0 */3 * * *' # Runs exactly every 3 hours
+  workflow_dispatch: # Allows you to click "Run workflow" to test it manually
+
+# Grant explicit write permissions to the GitHub Actions bot
+permissions:
+  contents: write
 
 jobs:
-  ping_db:
+  ping_and_log:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Supabase REST APIs
-        env:
-          URL_1: ${{ secrets.SUPABASE_URL }}
-          KEY_1: ${{ secrets.SUPABASE_KEY }}
-          URL_2: ${{ secrets.SUPABASE_URL_1 }}
-          KEY_2: ${{ secrets.SUPABASE_KEY_1 }}
-        run: |
-          for i in 1 2; do
-            eval SUPABASE_URL=\$URL_$i
-            eval SUPABASE_KEY=\$KEY_$i
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-            if [ -n "$SUPABASE_URL" ]; then
-              echo "----------------------------------------"
-              echo "Pinging Supabase Project $i..."
-              
-              curl -X GET "$SUPABASE_URL/rest/v1/users?limit=1" \
-              -H "apikey: $SUPABASE_KEY" \
-              -H "Authorization: Bearer $SUPABASE_KEY"
-              
-              echo -e "\nFinished ping for project $i"
+      - name: Ping Supabase Projects & Write Log
+        env:
+          SUPABASE_URL_1: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY_1: ${{ secrets.SUPABASE_KEY }}
+          SUPABASE_URL_2: ${{ secrets.SUPABASE_URL_1 }}
+          SUPABASE_KEY_2: ${{ secrets.SUPABASE_KEY_1 }}
+        run: |
+          CURRENT_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          echo "=== Supabase Heartbeat Log ($CURRENT_TIME) ===" > heartbeat.txt
+
+          # --- Project 1 ---
+          if [ -n "$SUPABASE_URL_1" ]; then
+            echo "Pinging Project 1..."
+            STATUS_CODE_1=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$SUPABASE_URL_1/rest/v1/" \
+              -H "apikey: $SUPABASE_KEY_1" \
+              -H "Authorization: Bearer $SUPABASE_KEY_1")
+            
+            echo "Project 1 HTTP Status: $STATUS_CODE_1"
+            if [ "$STATUS_CODE_1" -eq 200 ] || [ "$STATUS_CODE_1" -eq 404 ]; then
+              echo "Project 1 Status: Success ($STATUS_CODE_1) - Database is Awake!" >> heartbeat.txt
+            else
+              echo "Project 1 Status: Failed ($STATUS_CODE_1)" >> heartbeat.txt
             fi
-          done
+          fi
+
+          # --- Project 2 ---
+          if [ -n "$SUPABASE_URL_2" ]; then
+            echo "Pinging Project 2..."
+            STATUS_CODE_2=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$SUPABASE_URL_2/rest/v1/" \
+              -H "apikey: $SUPABASE_KEY_2" \
+              -H "Authorization: Bearer $SUPABASE_KEY_2")
+            
+            echo "Project 2 HTTP Status: $STATUS_CODE_2"
+            if [ "$STATUS_CODE_2" -eq 200 ] || [ "$STATUS_CODE_2" -eq 404 ]; then
+              echo "Project 2 Status: Success ($STATUS_CODE_2) - Database is Awake!" >> heartbeat.txt
+            else
+              echo "Project 2 Status: Failed ($STATUS_CODE_2)" >> heartbeat.txt
+            fi
+          fi
+
+      - name: Commit and Push heartbeat.txt
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add heartbeat.txt
+          
+          # Check if there are actual changes to commit
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Update heartbeat status for multiple projects [skip ci]"
+            git push
+          fi
